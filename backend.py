@@ -157,16 +157,16 @@ def fetch_pdf(url: str, session_cache: dict) -> Optional[io.BytesIO]:
 
 # ── PDF generation helpers ─────────────────────────────────────────────────
 
-def make_blank_page() -> pikepdf.Page:
-    """Returns a blank A4 pikepdf page."""
+def make_blank_page(output_pdf: pikepdf.Pdf) -> pikepdf.Page:
+    """Returns a blank A4 pikepdf page, foreign-copied into output_pdf."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     c.save()
     buf.seek(0)
     blank_pdf = pikepdf.open(buf)
-    return blank_pdf.pages[0]
+    return output_pdf.copy_foreign(blank_pdf.pages[0])
 
-def make_divider_page(label: str, papers: list[PaperSelection]) -> pikepdf.Page:
+def make_divider_page(label: str, papers: list[PaperSelection], output_pdf: pikepdf.Pdf) -> pikepdf.Page:
     """
     Generates a section-divider cover page as a pikepdf Page.
     label: e.g. "2023" or "Paper 12"
@@ -204,9 +204,9 @@ def make_divider_page(label: str, papers: list[PaperSelection]) -> pikepdf.Page:
     c.save()
     buf.seek(0)
     div_pdf = pikepdf.open(buf)
-    return div_pdf.pages[0]
+    return output_pdf.copy_foreign(div_pdf.pages[0])
 
-def make_placeholder_page(paper: PaperSelection) -> pikepdf.Page:
+def make_placeholder_page(paper: PaperSelection, output_pdf: pikepdf.Pdf) -> pikepdf.Page:
     """Insert when a paper returns 404."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
@@ -228,7 +228,7 @@ def make_placeholder_page(paper: PaperSelection) -> pikepdf.Page:
     c.save()
     buf.seek(0)
     ph_pdf = pikepdf.open(buf)
-    return ph_pdf.pages[0]
+    return output_pdf.copy_foreign(ph_pdf.pages[0])
 
 # ── Sorting ────────────────────────────────────────────────────────────────
 
@@ -272,10 +272,10 @@ def build_bundle(
         # Insert section divider when group changes
         if gk != current_group:
             group_papers = [p for p in sorted_papers if group_key(p, sort_order) == gk]
-            divider = make_divider_page(gk, group_papers)
+            divider = make_divider_page(gk, group_papers, output)
             output.pages.append(divider)
             # Divider is always 1 page — add blank to keep even
-            output.pages.append(make_blank_page())
+            output.pages.append(make_blank_page(output))
             current_group = gk
 
         # Fetch PDF
@@ -283,9 +283,9 @@ def build_bundle(
 
         if pdf_buf is None:
             warnings.append(f"Missing: {paper.filename}")
-            ph = make_placeholder_page(paper)
+            ph = make_placeholder_page(paper, output)
             output.pages.append(ph)
-            output.pages.append(make_blank_page())  # keep even
+            output.pages.append(make_blank_page(output))  # keep even
             continue
 
         try:
@@ -299,7 +299,7 @@ def build_bundle(
 
         # Odd-page fix for double-sided printing
         if len(src.pages) % 2 != 0:
-            output.pages.append(make_blank_page())
+            output.pages.append(make_blank_page(output))
 
     result_buf = io.BytesIO()
     output.save(result_buf)
